@@ -2,16 +2,28 @@ import { App, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian'
 
 // Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	baseDir: string;
-}
+import { GuidifySettings, DEFAULT_SETTINGS } from './settings';
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-    baseDir: ''
-}
+export default class GuidifyPlugin extends Plugin {
+	settings: GuidifySettings;
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+	getIgnoreRegexList(): RegExp[] {
+		const raw = this.settings.ignorePatterns || '';
+		const regexes: RegExp[] = [];
+		raw.split(',').map(p => p.trim()).filter(Boolean).forEach(p => {
+			try {
+				regexes.push(new RegExp(p));
+			} catch (e) {
+				console.warn('Invalid ignore regex:', p, e);
+			}
+		});
+		return regexes;
+	}
+
+	isIgnoredByPattern(filename: string): boolean {
+		const regexList = this.getIgnoreRegexList();
+		return regexList.some(re => re.test(filename));
+	}
 
 	async onload() {
 		await this.loadSettings();
@@ -53,6 +65,11 @@ export default class MyPlugin extends Plugin {
 				if (guidRegex.test(nameNoExt)) {
 					console.log('create: name already a guid, skipping', filename);
 					return; // already a guid
+				}
+				// Ignore files matching any ignore pattern
+				if (this.isIgnoredByPattern(filename)) {
+					console.log('create: filename matches ignore pattern, skipping', filename);
+					return;
 				}
 
 				// Delay a short time so other plugins (e.g. Templater) can finish populating the new file.
@@ -134,6 +151,11 @@ export default class MyPlugin extends Plugin {
 			return;
 		}
 		try {
+			const filename = parts[parts.length - 1];
+			if (this.isIgnoredByPattern(filename)) {
+				new Notice('File matches ignore pattern; skipping GUID rename.');
+				return;
+			}
 			const content = await this.app.vault.read(file);
 			if (/<%[\s\S]*?%>/.test(content)) {
 				new Notice('File contains templater-like tags; skipping GUID rename.');
@@ -170,9 +192,9 @@ export default class MyPlugin extends Plugin {
 }
 
 class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+	plugin: GuidifyPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: GuidifyPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -194,5 +216,18 @@ class SampleSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+        new Setting(containerEl)
+            .setName('Ignore patterns')
+            .setDesc('CSV of regex patterns to ignore (e.g. ".*template.*,[0-9]{4}-.*"). Files matching any pattern will be ignored for GUID renaming.')
+            .addText(text =>
+                text
+                    .setPlaceholder('e.g. ".*template.*,[0-9]{4}-.*"')
+                    .setValue(this.plugin.settings.ignorePatterns || '')
+                    .onChange(async (value) => {
+                        this.plugin.settings.ignorePatterns = value.trim();
+                        await this.plugin.saveSettings();
+                    })
+            );
 	}
 }
