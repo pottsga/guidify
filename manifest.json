@@ -1,7 +1,7 @@
 {
 	"id": "guidify",
 	"name": "Guidify",
-	"version": "1.0.3",
+	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Automatically rename files to GUIDs.",
 	"author": "Greg Potts",
