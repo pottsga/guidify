@@ -4,10 +4,12 @@ import { App, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian'
 
 interface GuidifyPluginSettings {
 	baseDirs: string;
+	delay: number;
 }
 
 const DEFAULT_SETTINGS: GuidifyPluginSettings = {
-    baseDirs: ''
+    baseDirs: '',
+	delay: 0
 }
 	
 export default class GuidifyPlugin extends Plugin {
@@ -47,12 +49,6 @@ export default class GuidifyPlugin extends Plugin {
 					const f = this.app.vault.getAbstractFileByPath(file.path);
 					if (!f || !(f instanceof TFile)) return;
 					try {
-						const content = await this.app.vault.read(f as TFile);
-						if (/<%[\s\S]*?%>/.test(content)) {
-							console.log('Skipping GUID rename because templater-like tags were detected in', f.path);
-							return;
-						}
-
 						// Generate a GUID (prefer crypto.randomUUID when available)
 						let guid = '';
 						const g = (globalThis as unknown) as { crypto?: { randomUUID?: () => string } };
@@ -77,7 +73,7 @@ export default class GuidifyPlugin extends Plugin {
 					} catch (err) {
 						console.error('Error reading file before GUID rename:', err);
 					}
-				}, 100);
+				}, this.settings.delay || 0);
 			})();
 		}));
 
@@ -124,6 +120,22 @@ class GuidifySettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.baseDirs = value.trim();
 						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Delay')
+			.setDesc('How long (in milliseconds) to wait after file creation before renaming it. This can help avoid conflicts with other plugins that may also act on new files.')
+			.addText(text =>
+				text
+					.setPlaceholder('e.g. 100')
+					.setValue(this.plugin.settings.delay?.toString() || '')
+					.onChange(async (value) => {
+						const delay = parseInt(value.trim());
+						if (!isNaN(delay)) {
+							this.plugin.settings.delay = delay;
+							await this.plugin.saveSettings();
+						}
 					})
 			);
 	}
